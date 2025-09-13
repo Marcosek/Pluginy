@@ -1,0 +1,4 @@
+name: RespawnTP
+version: '${project.version}'
+main: com.mody.respawntp.RespawnTP
+api-version: '1.20'

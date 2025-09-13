@@ -1,0 +1,9 @@
+name: GamblerPlugin
+version: '1.0-SNAPSHOT'
+main: com.mody.gamblerplugin.GamblerPlugin
+api-version: '1.20'
+commands:
+  kubki:
+    description: Tworzy NPC do gry w kubki
+    usage: /kubki stworz npc <x> <y> <z>
+depend: [Citizens]  # Wymagany Citizens

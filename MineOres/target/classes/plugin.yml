@@ -1,0 +1,25 @@
+name: MineOres
+version: '1.0-SNAPSHOT'
+main: com.mody.mineores.MineOres
+api-version: '1.20'
+commands:
+  setmineores1:
+    description: Tworzy kamień do kopania
+    usage: /setmineores1 <x1> <y1> <z1> <x2> <y2> <z2>
+    permission: mineores.admin
+  setmineores2:
+    description: Tworzy losowe rudy do kopania
+    usage: /setmineores2 <x1> <y1> <z1> <x2> <y2> <z2>
+    permission: mineores.admin
+  setmineores3:
+    description: Tworzy deepslate do kopania
+    usage: /setmineores3 <x1> <y1> <z1> <x2> <y2> <z2>
+    permission: mineores.admin
+  setmineores4:
+    description: Tworzy obsydian do kopania
+    usage: /setmineores4 <x1> <y1> <z1> <x2> <y2> <z2>
+    permission: mineores.admin
+permissions:
+  mineores.admin:
+    description: Pozwala na używanie komend MineOres
+    default: op

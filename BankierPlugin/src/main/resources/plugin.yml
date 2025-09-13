@@ -1,0 +1,9 @@
+name: BankierPlugin
+version: '${project.version}'
+main: com.mody.bankierplugin.BankierPlugin
+api-version: '1.20'
+commands:
+  bankier:
+    description: Tworzy NPC Bankiera
+    usage: /bankier stworz npc <x> <y> <z>
+depend: [Citizens]

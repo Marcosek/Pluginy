@@ -1,0 +1,708 @@
+package com.mody.safezone2;
+
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.EventHandler;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.HashSet;
+import java.util.Arrays;
+import java.util.Set;
+
+public class Safezone2 extends JavaPlugin implements Listener {
+
+    private final Map<String, Zone> zones = new HashMap<>();
+    private final Map<UUID, Boolean> playerInZone = new HashMap<>();
+    private final Map<String, Zone> guildZones = new HashMap<>(); // Przechowuje strefy gildii
+    private static final Set<String> ALLOWED_ZONE_TYPES = new HashSet<>(Arrays.asList("miasto", "kopalnia", "guild"));
+    private final Map<UUID, Role> playerRoles = new HashMap<>();
+    private final Map<UUID, String> guildRoles = new HashMap<>();
+    private final Map<UUID, String> lastZoneNames = new HashMap<>();
+
+
+
+    @Override
+    public void onEnable() {
+        Bukkit.getPluginManager().registerEvents(this, this);
+
+        // Komenda do tworzenia stref
+        getCommand("setzone").setExecutor((sender, command, label, args) -> {
+            if (!sender.hasPermission("safezone.set")) {
+                sender.sendMessage(ChatColor.RED + "Nie masz uprawnień do ustawiania stref.");
+                return true;
+            }
+
+            if (args.length != 8) {
+                sender.sendMessage(ChatColor.RED + "Użycie: /setzone <typ> <nazwa> <x1> <y1> <z1> <x2> <y2> <z2>");
+                return true;
+            }
+
+            String type = args[0];
+            String name = args[1];
+
+            if (!ALLOWED_ZONE_TYPES.contains(type.toLowerCase())) {
+                sender.sendMessage(ChatColor.RED + "Niepoprawny typ strefy! Dostępne typy: " + ALLOWED_ZONE_TYPES);
+                return true;
+            }
+
+            try {
+                double x1 = Double.parseDouble(args[2]);
+                double y1 = Double.parseDouble(args[3]);
+                double z1 = Double.parseDouble(args[4]);
+                double x2 = Double.parseDouble(args[5]);
+                double y2 = Double.parseDouble(args[6]);
+                double z2 = Double.parseDouble(args[7]);
+
+                Location corner1 = new Location(Bukkit.getWorld("world"), x1, y1, z1);
+                Location corner2 = new Location(Bukkit.getWorld("world"), x2, y2, z2);
+
+                Zone zone = new Zone(name, type, corner1, corner2);
+                zones.put(name, zone);
+
+                sender.sendMessage(ChatColor.GREEN + "Strefa typu " + type + " została ustawiona!");
+            } catch (NumberFormatException e) {
+                sender.sendMessage(ChatColor.RED + "Wprowadź poprawne współrzędne liczbowe!");
+            }
+            return true;
+        });
+
+        // Komenda do tworzenia stref gildii
+        getCommand("setzoneguild").setExecutor((sender, command, label, args) -> {
+            if (!sender.hasPermission("safezone.set")) {
+                sender.sendMessage(ChatColor.RED + "Nie masz uprawnień do ustawiania strefy.");
+                return true;
+            }
+            if (args.length != 7) {
+                sender.sendMessage(ChatColor.RED + "Użycie: /setzoneguild <nazwa_gildi> <x1> <y1> <z1> <x2> <y2> <z2>");
+                return true;
+            }
+
+            String guildName = args[0];
+
+            try {
+                double x1 = Double.parseDouble(args[1]);
+                double y1 = Double.parseDouble(args[2]);
+                double z1 = Double.parseDouble(args[3]);
+                double x2 = Double.parseDouble(args[4]);
+                double y2 = Double.parseDouble(args[5]);
+                double z2 = Double.parseDouble(args[6]);
+
+                Location corner1 = new Location(Bukkit.getWorld("world"), x1, y1, z1);
+                Location corner2 = new Location(Bukkit.getWorld("world"), x2, y2, z2);
+
+                Zone zone = new Zone(guildName, "guild", corner1, corner2);
+                guildZones.put(guildName, zone);
+
+                sender.sendMessage(ChatColor.GREEN + "Strefa gildii " + guildName + " została ustawiona!");
+            } catch (NumberFormatException e) {
+                sender.sendMessage(ChatColor.RED + "Wprowadź poprawne współrzędne liczbowe!");
+            }
+            return true;
+        });
+
+        // Komenda do przypisywania ról
+        getCommand("setrole").setExecutor((sender, command, label, args) -> {
+            if (!sender.hasPermission("safezone.setrole")) {
+                sender.sendMessage(ChatColor.RED + "Nie masz uprawnień do przypisywania ról.");
+                return true;
+            }
+
+            if (args.length != 2) {
+                sender.sendMessage(ChatColor.RED + "Użycie: /setrole <nick> <rola>");
+                return true;
+            }
+
+            String playerName = args[0];
+            String roleName = args[1];
+
+            Role role = Role.getRoleByName(roleName);
+            if (role == null) {
+                sender.sendMessage(ChatColor.RED + "Niepoprawna rola! Dostępne role: " + Role.getAvailableRoles());
+                return true;
+            }
+
+            Player targetPlayer = Bukkit.getPlayer(playerName);
+            if (targetPlayer == null) {
+                sender.sendMessage(ChatColor.RED + "Gracz o podanym nicku nie jest online!");
+                return true;
+            }
+
+            // Przypisz rolę ogólną
+            playerRoles.put(targetPlayer.getUniqueId(), role);
+            sender.sendMessage(ChatColor.GREEN + "Gracz " + playerName + " otrzymał rolę " + roleName);
+            return true;
+        });
+
+        // Komenda do usuwania stref
+        getCommand("deletezone").setExecutor((sender, command, label, args) -> {
+            if (!sender.hasPermission("safezone.delete")) {
+                sender.sendMessage(ChatColor.RED + "Nie masz uprawnień do usuwania stref.");
+                return true;
+            }
+
+            if (args.length != 1) {
+                sender.sendMessage(ChatColor.RED + "Użycie: /deletezone <nazwa>");
+                return true;
+            }
+
+            String zoneName = args[0];
+            if (zones.containsKey(zoneName)) {
+                zones.remove(zoneName);
+                sender.sendMessage(ChatColor.GREEN + "Strefa " + zoneName + " została usunięta!");
+            } else {
+                sender.sendMessage(ChatColor.RED + "Nie znaleziono strefy o nazwie " + zoneName);
+            }
+            return true;
+        });
+
+        // Komenda do usuwania ról
+        getCommand("deleterole").setExecutor((sender, command, label, args) -> {
+            if (!sender.hasPermission("safezone.deleterole")) {
+                sender.sendMessage(ChatColor.RED + "Nie masz uprawnień do usuwania ról.");
+                return true;
+            }
+
+            if (args.length != 2) {
+                sender.sendMessage(ChatColor.RED + "Użycie: /deleterole <nick> <role>");
+                return true;
+            }
+
+            String playerName = args[0];
+            String roleName = args[1];
+
+            Role role = Role.getRoleByName(roleName);
+            if (role == null) {
+                sender.sendMessage(ChatColor.RED + "Niepoprawna rola! Dostępne role: " + Role.getAvailableRoles());
+                return true;
+            }
+
+            Player targetPlayer = Bukkit.getPlayer(playerName);
+            if (targetPlayer == null) {
+                sender.sendMessage(ChatColor.RED + "Gracz o podanym nicku nie jest online!");
+                return true;
+            }
+
+            playerRoles.remove(targetPlayer.getUniqueId());
+            sender.sendMessage(ChatColor.GREEN + "Rola " + roleName + " została usunięta z gracza " + playerName);
+            return true;
+        });
+        getCommand("setroleguild").setExecutor((sender, command, label, args) -> {
+            if (!sender.hasPermission("safezone.setroleguild")) {
+                sender.sendMessage(ChatColor.RED + "Nie masz uprawnień do przypisywania ról gildii.");
+                return true;
+            }
+
+            if (args.length != 2) {
+                sender.sendMessage(ChatColor.RED + "Użycie: /setroleguild <nick> <nazwa_gildi>");
+                return true;
+            }
+
+            String playerName = args[0];
+            String guildName = args[1];
+
+            Player targetPlayer = Bukkit.getPlayer(playerName);
+            if (targetPlayer == null) {
+                sender.sendMessage(ChatColor.RED + "Gracz o podanym nicku nie jest online!");
+                return true;
+            }
+
+            // Przypisz rolę gildii (dowolna nazwa)
+            guildRoles.put(targetPlayer.getUniqueId(), guildName);
+            sender.sendMessage(ChatColor.GREEN + "Gracz " + playerName + " otrzymał rolę gildii " + guildName);
+            return true;
+        });
+
+        // Komenda do usuwania ról gildii
+        getCommand("deleteroleguild").setExecutor((sender, command, label, args) -> {
+            if (!sender.hasPermission("safezone.deleteroleguild")) {
+                sender.sendMessage(ChatColor.RED + "Nie masz uprawnień do usuwania ról gildii.");
+                return true;
+            }
+
+            if (args.length != 2) {
+                sender.sendMessage(ChatColor.RED + "Użycie: /deleteroleguild <nick> <nazwa_gildi>");
+                return true;
+            }
+
+            String playerName = args[0];
+            String guildName = args[1];
+
+            Player targetPlayer = Bukkit.getPlayer(playerName);
+            if (targetPlayer == null) {
+                sender.sendMessage(ChatColor.RED + "Gracz o podanym nicku nie jest online!");
+                return true;
+            }
+
+            // Usuń rolę gildii
+            if (guildRoles.containsKey(targetPlayer.getUniqueId()) && guildRoles.get(targetPlayer.getUniqueId()).equals(guildName)) {
+                guildRoles.remove(targetPlayer.getUniqueId());
+                sender.sendMessage(ChatColor.GREEN + "Rola gildii " + guildName + " została usunięta z gracza " + playerName);
+            } else {
+                sender.sendMessage(ChatColor.RED + "Gracz " + playerName + " nie ma przypisanej roli gildii " + guildName);
+            }
+            return true;
+        });
+        getCommand("deletezoneguild").setExecutor((sender, command, label, args) -> {
+            if (!sender.hasPermission("safezone.deleteguild")) {
+                sender.sendMessage(ChatColor.RED + "Nie masz uprawnień do usuwania stref gildii.");
+                return true;
+            }
+
+            if (args.length != 1) {
+                sender.sendMessage(ChatColor.RED + "Użycie: /deletezoneguild <nazwa_gildi>");
+                return true;
+            }
+
+            String guildName = args[0];
+
+            // Sprawdź, czy strefa gildii istnieje
+            if (guildZones.containsKey(guildName)) {
+                guildZones.remove(guildName);
+                sender.sendMessage(ChatColor.GREEN + "Strefa gildii " + guildName + " została usunięta!");
+            } else {
+                sender.sendMessage(ChatColor.RED + "Nie znaleziono strefy gildii o nazwie " + guildName);
+            }
+            return true;
+        });
+    }
+    @EventHandler
+    public void onBlockPlace(BlockPlaceEvent event) {
+        Player player = event.getPlayer();
+        Location blockLocation = event.getBlock().getLocation();
+        Role playerRole = playerRoles.get(player.getUniqueId());
+        String guildRole = guildRoles.get(player.getUniqueId());
+
+        boolean isInAnyZone = false; // Flaga do sprawdzania, czy gracz jest w jakiejkolwiek strefie
+
+        // Sprawdź wszystkie strefy
+        for (Zone zone : zones.values()) {
+            if (zone.isInside(blockLocation)) {
+                isInAnyZone = true; // Gracz jest w strefie
+                if (playerRole == null || !playerRole.canBuildInZone(zone)) {
+                    event.setCancelled(true);
+                    player.sendMessage(ChatColor.RED + "Nie masz uprawnień do budowania w tej strefie.");
+                }
+                return; // Nie sprawdzaj więcej stref
+            }
+        }
+
+        // Sprawdź strefy gildii
+        for (Zone guildZone : guildZones.values()) {
+            if (guildZone.isInside(blockLocation)) {
+                isInAnyZone = true; // Gracz jest w strefie gildii
+                if (playerRole == Role.KROL) {
+                    return; // Król może budować w każdej strefie
+                }
+                if (guildRole != null && guildRole.equals(guildZone.getName())) {
+                    return; // Gracz może budować w swojej gildii
+                }
+                event.setCancelled(true);
+                player.sendMessage(ChatColor.RED + "Nie masz uprawnień do budowania w tej strefie.");
+                return; // Nie sprawdzaj więcej stref
+            }
+        }
+
+        // Jeśli gracz nie jest w żadnej strefie, pozwól mu budować
+    }
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Player player = event.getPlayer();
+        Location blockLocation = event.getBlock().getLocation();
+        Role playerRole = playerRoles.get(player.getUniqueId());
+        String guildRole = guildRoles.get(player.getUniqueId());
+
+        // Sprawdź wszystkie strefy
+        for (Zone zone : zones.values()) {
+            if (zone.isInside(blockLocation)) {
+                // Sprawdź, czy strefa to "kopalnia"
+                if (zone.getType().equals("kopalnia")) {
+                    // Pozwól każdemu niszczyć w strefie kopalni
+                    return; // Gracz może niszczyć w kopalni
+                }
+
+                // Inne strefy
+                if (playerRole == null || !playerRole.canDestroyInZone(zone)) {
+                    event.setCancelled(true);
+                    player.sendMessage(ChatColor.RED + "Nie masz uprawnień do niszczenia w tej strefie.");
+                }
+                return; // Nie sprawdzaj więcej stref
+            }
+        }
+
+        // Sprawdź strefy gildii
+        for (Zone guildZone : guildZones.values()) {
+            if (guildZone.isInside(blockLocation)) {
+                if (playerRole == Role.KROL) {
+                    return; // Król może niszczyć w każdej strefie
+                }
+                if (guildRole != null && guildRole.equals(guildZone.getName())) {
+                    return; // Gracz może niszczyć w swojej gildii
+                }
+                event.setCancelled(true);
+                player.sendMessage(ChatColor.RED + "Nie masz uprawnień do niszczenia w tej strefie.");
+                return; // Nie sprawdzaj więcej stref
+            }
+        }
+
+        // Jeśli gracz nie jest w żadnej strefie, pozwól mu niszczyć
+    }
+    @EventHandler
+    public void onPlayerMove(PlayerMoveEvent event) {
+        Player player = event.getPlayer();
+        Location playerLocation = player.getLocation();
+        UUID playerId = player.getUniqueId();
+
+        boolean isInAnyZone = false; // Flaga do sprawdzania, czy gracz jest w jakiejkolwiek strefie
+        String currentZoneName = null; // Przechowuje nazwę aktualnej strefy
+
+        // Sprawdź wszystkie strefy
+        for (Zone zone : zones.values()) {
+            if (zone.isInside(playerLocation)) {
+                isInAnyZone = true;
+                currentZoneName = zone.getName();
+                break; // Gracz jest w strefie, nie sprawdzaj więcej
+            }
+        }
+
+        // Sprawdź strefy gildii
+        for (Zone guildZone : guildZones.values()) {
+            if (guildZone.isInside(playerLocation)) {
+                isInAnyZone = true;
+                currentZoneName = guildZone.getName();
+                break; // Gracz jest w strefie gildii, nie sprawdzaj więcej
+            }
+        }
+
+        // Sprawdź, czy gracz wchodzi lub opuszcza strefę
+        boolean wasInZone = playerInZone.getOrDefault(playerId, false);
+
+        if (isInAnyZone && !wasInZone) {
+            // Gracz wchodzi do strefy
+            sendTitle(player, ChatColor.GREEN + "Wchodzisz do strefy:" , " " + currentZoneName, 10, 30, 20);
+            playerInZone.put(playerId, true);
+            lastZoneNames.put(playerId, currentZoneName); // Zapisz ostatnią znaną strefę
+        } else if (!isInAnyZone && wasInZone) {
+            // Gracz opuszcza strefę
+            String lastZoneName = lastZoneNames.getOrDefault(playerId, "brak");
+            sendTitle(player, ChatColor.RED + "Opuszczasz strefę:" , " " + lastZoneName, 10, 30, 20);
+            playerInZone.put(playerId, false);
+        }
+    }
+
+    private void handleZoneMovement(Player player, Location playerLocation, Zone zone, String zoneMessage) {
+        boolean isInZone = zone.isInside(playerLocation);
+        boolean wasInZone = playerInZone.getOrDefault(player.getUniqueId(), false);
+
+        // Wysyłaj wiadomości tylko wtedy, gdy gracz rzeczywiście wchodzi lub opuszcza strefę
+        if (isInZone && !wasInZone) {
+            sendTitle(player, ChatColor.GREEN + "Wchodzisz do strefy: " + zoneMessage, "", 10, 30, 20);
+            playerInZone.put(player.getUniqueId(), true);
+        } else if (!isInZone && wasInZone) {
+            sendTitle(player, ChatColor.RED + "Opuszczasz strefę: " + zoneMessage, "", 10, 30, 20);
+            playerInZone.put(player.getUniqueId(), false);
+        }
+
+        // Wykonaj inne operacje, takie jak sprawdzanie uprawnień
+        checkRolePermissions(player, zone);
+    }
+
+    private void checkRolePermissions(Player player, Zone zone) {
+        Role role = playerRoles.get(player.getUniqueId());
+        if (role == null) {
+            player.sendMessage(ChatColor.RED + "Nie masz przypisanej roli.");
+        } else {
+            if (role.hasPermissionForZone(zone)) {
+                player.sendMessage(ChatColor.GREEN + "Masz uprawnienia w tej strefie.");
+            } else {
+                player.sendMessage(ChatColor.RED + "Nie masz uprawnień do tej strefy.");
+            }
+        }
+    }
+
+    private void sendTitle(Player player, String title, String subtitle, int fadeIn, int stay, int fadeOut) {
+        player.sendTitle(title, subtitle, fadeIn, stay, fadeOut);
+    }
+
+    public static class Zone {
+        private final String name;
+        private final String type;
+        private final Location corner1;
+        private final Location corner2;
+
+        public Zone(String name, String type, Location corner1, Location corner2) {
+            this.name = name;
+            this.type = type;
+            this.corner1 = corner1;
+            this.corner2 = corner2;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public boolean isInside(Location location) {
+            double minX = Math.min(corner1.getX(), corner2.getX());
+            double maxX = Math.max(corner1.getX(), corner2.getX());
+            double minY = Math.min(corner1.getY(), corner2.getY());
+            double maxY = Math.max(corner1.getY(), corner2.getY());
+            double minZ = Math.min(corner1.getZ(), corner2.getZ());
+            double maxZ = Math.max(corner1.getZ(), corner2.getZ());
+
+            return location.getX() >= minX && location.getX() <= maxX
+                    && location.getY() >= minY && location.getY() <= maxY
+                    && location.getZ() >= minZ && location.getZ() <= maxZ;
+        }
+    }
+
+    public enum Role {
+        KROL("krol"),
+        NEUTRALNY("neutralny");
+
+        private final String roleName;
+
+        Role(String roleName) {
+            this.roleName = roleName;
+        }
+
+        public String getRoleName() {
+            return roleName;
+        }
+
+        // Metoda do uzyskania roli na podstawie nazwy
+        public static Role getRoleByName(String name) {
+            for (Role role : values()) {
+                if (role.getRoleName().equalsIgnoreCase(name)) {
+                    return role;
+                }
+            }
+            return null; // Jeśli nie znaleziono pasującej roli
+        }
+
+        // Zwraca dostępne role w postaci zbioru
+        public static Set<String> getAvailableRoles() {
+            Set<String> roles = new HashSet<>();
+            for (Role role : values()) {
+                roles.add(role.getRoleName());
+            }
+            return roles;
+        }
+
+        // Metoda sprawdzająca, czy rola może budować w danej strefie
+        public boolean canBuildInZone(Zone zone) {
+            switch (this) {
+                case KROL:
+                    return zone.getType().equals("kopalnia") || zone.getType().equals("miasto");
+                case NEUTRALNY:
+                    return zone.getType().equals("miasto");
+                default:
+                    return false;
+            }
+        }
+
+        // Metoda sprawdzająca, czy rola może niszczyć w danej strefie
+        public boolean canDestroyInZone(Zone zone) {
+            switch (this) {
+                case KROL:
+                    return true;
+                case NEUTRALNY:
+                    return zone.getType().equals("kopalnia") || zone.getType().equals("miasto");
+                default:
+                    return false;
+            }
+        }
+        public boolean hasPermissionForZone(Zone zone) {
+            // Przykład logiki uprawnień
+            if (this == KROL) {
+                return true; // Król ma dostęp do wszystkich stref
+            }
+            // Neutralny ma dostęp do innych stref (można doprecyzować)
+            return this == NEUTRALNY && zone.getType().equals("neutral");
+        }
+    }}
+
+
+
+
+
+
+package com.mody.safezone2;
+
+import org.bukkit.Location;
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.HashSet;
+import java.util.Arrays;
+import java.util.Set;
+public class Zone {
+    private final String name;
+    private final String type;
+    private final Location corner1;
+    private final Location corner2;
+    private final Set<Role> allowedRoles; // Dodajemy zbiór ról, które mogą wchodzić do strefy
+
+    public Zone(String name, String type, Location corner1, Location corner2, Set<Role> allowedRoles) {
+        this.name = name;
+        this.type = type;
+        this.corner1 = corner1;
+        this.corner2 = corner2;
+        this.allowedRoles = allowedRoles;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public Location getCorner1() {
+        return corner1;
+    }
+
+    public Location getCorner2() {
+        return corner2;
+    }
+
+    public Set<Role> getAllowedRoles() {
+        return allowedRoles;
+    }
+
+    public boolean isInside(Location location, Role playerRole) {
+        // Sprawdzamy, czy lokalizacja znajduje się w strefie
+        double xMin = Math.min(corner1.getX(), corner2.getX());
+        double xMax = Math.max(corner1.getX(), corner2.getX());
+        double yMin = Math.min(corner1.getY(), corner2.getY());
+        double yMax = Math.max(corner1.getY(), corner2.getY());
+        double zMin = Math.min(corner1.getZ(), corner2.getZ());
+        double zMax = Math.max(corner1.getZ(), corner2.getZ());
+
+        boolean isInZone = location.getX() >= xMin && location.getX() <= xMax &&
+                location.getY() >= yMin && location.getY() <= yMax &&
+                location.getZ() >= zMin && location.getZ() <= zMax;
+
+        // Dodatkowe sprawdzenie, czy gracz ma rolę pozwalającą na wejście do strefy
+        return isInZone && allowedRoles.contains(playerRole);
+    }
+}
+
+
+
+
+
+
+package com.mody.safezone2;
+
+public enum Role {
+    KRÓL, NEUTRALNY;
+
+    public boolean canBuildInZone(Zone zone) {
+        // Sprawdzamy, czy gracz z daną rolą może budować w danej strefie
+        switch (this) {
+            case KRÓL:
+                // Król może budować i niszczyć w kopalni i mieście
+                return zone.getType().equals("kopalnia") || zone.getType().equals("miasto");
+            case NEUTRALNY:
+                // Neutralny może budować i niszczyć w mieście, ale tylko niszczyć w kopalni
+                return zone.getType().equals("miasto");
+            default:
+                return false;
+        }
+    }
+
+    public boolean canDestroyInZone(Zone zone) {
+        // Sprawdzamy, czy gracz z daną rolą może niszczyć w danej strefie
+        switch (this) {
+            case KRÓL:
+                // Król może niszczyć w kopalni i mieście
+                return true;
+            case NEUTRALNY:
+                // Neutralny może niszczyć w kopalni i mieście
+                return zone.getType().equals("kopalnia") || zone.getType().equals("miasto");
+            default:
+                return false;
+        }
+    }
+}
+
+
+
+name: Safezone2
+version: '${project.version}'
+main: com.mody.safezone2.Safezone2
+api-version: '1.20'
+commands:
+  setzone:
+    description: Ustawia nową strefę na mapie.
+    usage: /setzone <typ> <nazwa> <x1> <y1> <z1> <x2> <y2> <z2>
+    permission: safezone.set
+    permission-message: Nie masz uprawnień do ustawiania strefy.
+  deletezone:
+    description: Usuwa strefę o podanej nazwie.
+    usage: /deletezone <nazwa>
+    permission: safezone.delete
+    permission-message: Nie masz uprawnień do usuwania strefy.
+  setzoneguild:
+    description: Ustawia nową strefę gildii na mapie.
+    usage: /setzoneguild <nazwa_gildi> <x1> <y1> <z1> <x2> <y2> <z2>
+    permission: safezone.setguild
+    permission-message: Nie masz uprawnień do ustawiania strefy gildii.
+  deletezoneguild:
+    description: Usuwa strefę gildii o podanej nazwie.
+    usage: /deletezoneguild <nazwa_gildi>
+    permission: safezone.deleteguild
+    permission-message: Nie masz uprawnień do usuwania stref gildii.
+  setrole:
+    description: Przypisuje rolę graczowi.
+    usage: /setrole <nick> <rola>
+    permission: safezone.setrole
+    permission-message: Nie masz uprawnień do przypisywania ról.
+  deleterole:
+    description: Usuwa rolę gracza.
+    usage: /deleterole <nick> <rola>
+    permission: safezone.deleterole
+    permission-message: Nie masz uprawnień do usuwania ról.
+  setroleguild:
+    description: Przypisuje rolę gildii graczowi.
+    usage: /setroleguild <nick> <nazwa_gildi>
+    permission: safezone.setroleguild
+    permission-message: Nie masz uprawnień do przypisywania ról gildii.
+  deleteroleguild:
+    description: Usuwa rolę gildii z gracza.
+    usage: /deleteroleguild <nick> <nazwa_gildi>
+    permission: safezone.deleteroleguild
+    permission-message: Nie masz uprawnień do usuwania ról gildii.
+permissions:
+  safezone.setroleguild:
+    description: Pozwala na przypisywanie ról gildii.
+    default: op
+  safezone.deleteroleguild:
+    description: Pozwala na usuwanie ról gildii.
+    default: op
+  safezone.deleteguild:
+    description: Pozwala na usuwanie stref gildii.
+    default: op

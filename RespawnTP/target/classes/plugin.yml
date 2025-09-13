@@ -1,0 +1,4 @@
+name: RespawnTP
+version: '1.0-SNAPSHOT'
+main: com.mody.respawntp.RespawnTP
+api-version: '1.20'

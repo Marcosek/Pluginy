@@ -1,0 +1,9 @@
+name: BankierPlugin
+version: '1.0-SNAPSHOT'
+main: com.mody.bankierplugin.BankierPlugin
+api-version: '1.20'
+commands:
+  bankier:
+    description: Tworzy NPC Bankiera
+    usage: /bankier stworz npc <x> <y> <z>
+depend: [Citizens]

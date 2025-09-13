@@ -1,0 +1,66 @@
+name: Safezone2
+version: '1.0-SNAPSHOT'
+main: com.mody.safezone2.Safezone2
+api-version: '1.20'
+commands:
+  setzone:
+    description: Ustawia nową strefę na mapie.
+    usage: /setzone <typ> <nazwa> <x1> <y1> <z1> <x2> <y2> <z2>
+    permission: safezone.set
+    permission-message: Nie masz uprawnień do ustawiania strefy.
+  deletezone:
+    description: Usuwa strefę o podanej nazwie.
+    usage: /deletezone <nazwa>
+    permission: safezone.delete
+    permission-message: Nie masz uprawnień do usuwania strefy.
+  setzoneguild:
+    description: Ustawia nową strefę gildii na mapie.
+    usage: /setzoneguild <nazwa_gildi> <x1> <y1> <z1> <x2> <y2> <z2>
+    permission: safezone.setguild
+    permission-message: Nie masz uprawnień do ustawiania strefy gildii.
+  deletezoneguild:
+    description: Usuwa strefę gildii o podanej nazwie.
+    usage: /deletezoneguild <nazwa_gildi>
+    permission: safezone.deleteguild
+    permission-message: Nie masz uprawnień do usuwania stref gildii.
+  setrole:
+    description: Przypisuje rolę graczowi.
+    usage: /setrole <nick> <rola>
+    permission: safezone.setrole
+    permission-message: Nie masz uprawnień do przypisywania ról.
+  deleterole:
+    description: Usuwa rolę gracza.
+    usage: /deleterole <nick> <rola>
+    permission: safezone.deleterole
+    permission-message: Nie masz uprawnień do usuwania ról.
+  setroleguild:
+    description: Przypisuje rolę gildii graczowi.
+    usage: /setroleguild <nick> <nazwa_gildi>
+    permission: safezone.setroleguild
+    permission-message: Nie masz uprawnień do przypisywania ról gildii.
+  deleteroleguild:
+    description: Usuwa rolę gildii z gracza.
+    usage: /deleteroleguild <nick> <nazwa_gildi>
+    permission: safezone.deleteroleguild
+    permission-message: Nie masz uprawnień do usuwania ról gildii.
+  setmineblocks:
+    description: Ustawia obszar, w którym można niszczyć bloki w kopalni.
+    usage: /setmineblocks <x1> <y1> <z1> <x2> <y2> <z2>
+    permission: safezone.setmineblocks
+    permission-message: Nie masz uprawnień do ustawiania bloków w kopalni.
+  reloadzones:
+    usage: /reloadzones
+    permission: safezone.reloadzones
+permissions:
+  safezone.setroleguild:
+    description: Pozwala na przypisywanie ról gildii.
+    default: op
+  safezone.deleteroleguild:
+    description: Pozwala na usuwanie ról gildii.
+    default: op
+  safezone.deleteguild:
+    description: Pozwala na usuwanie stref gildii.
+    default: op
+  safezone.setmineblocks:
+    description: Pozwala na ustawianie obszaru, w którym można niszczyć bloki w kopalni.
+    default: op
